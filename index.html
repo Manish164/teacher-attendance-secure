@@ -235,22 +235,13 @@
             color: #667eea;
             margin-bottom: 30px;
         }
-        .locked-message {
-            text-align: center;
-            padding: 60px 20px;
-            color: #6c757d;
-        }
-        .locked-message h2 {
-            color: #dc3545;
-            margin-bottom: 15px;
-        }
-        .map-link {
-            color: #667eea;
-            text-decoration: none;
-            font-weight: 600;
-        }
-        .map-link:hover {
-            text-decoration: underline;
+        .location-badge {
+            display: inline-block;
+            background: #28a745;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 14px;
         }
         @media (max-width: 768px) {
             .records-table { font-size: 14px; }
@@ -332,9 +323,6 @@
                     <input type="password" id="adminPassword" placeholder="Enter password">
                 </div>
                 <button class="btn btn-primary" onclick="adminLogin()" style="width: 100%;">Login</button>
-                <p style="margin-top: 20px; text-align: center; color: #6c757d; font-size: 14px;">
-                    Default Password: <strong>admin123</strong>
-                </p>
             </div>
 
             <div id="adminDashboard" style="display: none;">
@@ -377,7 +365,7 @@
 
     <script>
         let videoStream = null, photoData = null, locationData = null;
-        const ADMIN_PASSWORD = 'admin123'; // Change this password
+        const ADMIN_PASSWORD = 'gsms2017@';
         let isAdminLoggedIn = false;
 
         function switchTab(tab) {
@@ -420,7 +408,6 @@
             document.getElementById('adminDashboard').style.display = 'none';
         }
 
-        // Allow Enter key for login
         document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('adminPassword').addEventListener('keypress', function(e) {
                 if (e.key === 'Enter') {
@@ -439,36 +426,65 @@
         updateDateTime();
         setInterval(updateDateTime, 1000);
 
+        function getLocationName(lat, lon) {
+            return fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=10`)
+                .then(response => response.json())
+                .then(data => {
+                    const address = data.address;
+                    let locationName = '';
+                    
+                    if (address.village) {
+                        locationName = address.village;
+                    } else if (address.town) {
+                        locationName = address.town;
+                    } else if (address.city) {
+                        locationName = address.city;
+                    } else if (address.suburb) {
+                        locationName = address.suburb;
+                    } else if (address.municipality) {
+                        locationName = address.municipality;
+                    }
+                    
+                    if (address.state_district && locationName) {
+                        locationName += ', ' + address.state_district;
+                    } else if (address.county && locationName) {
+                        locationName += ', ' + address.county;
+                    }
+                    
+                    if (address.state && locationName) {
+                        locationName += ', ' + address.state;
+                    }
+                    
+                    return locationName || data.display_name;
+                })
+                .catch(() => {
+                    return `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+                });
+        }
+
         function getLocation() {
             if (navigator.geolocation) {
                 document.getElementById('locationInfo').style.display = 'block';
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
+                        const lat = position.coords.latitude;
+                        const lon = position.coords.longitude;
+                        
                         locationData = {
-                            latitude: position.coords.latitude,
-                            longitude: position.coords.longitude,
+                            latitude: lat,
+                            longitude: lon,
                             accuracy: position.coords.accuracy,
                             timestamp: new Date().toISOString()
                         };
                         
-                        // Get address from coordinates using reverse geocoding
-                        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${locationData.latitude}&lon=${locationData.longitude}`)
-                            .then(response => response.json())
-                            .then(data => {
-                                locationData.address = data.display_name;
-                                document.getElementById('locationText').innerHTML = 
-                                    `<strong>Address:</strong> ${data.display_name}<br>` +
-                                    `<strong>Coordinates:</strong> ${locationData.latitude.toFixed(6)}, ${locationData.longitude.toFixed(6)}<br>` +
-                                    `<strong>Accuracy:</strong> ${locationData.accuracy.toFixed(0)} meters<br>` +
-                                    `<a href="https://www.google.com/maps?q=${locationData.latitude},${locationData.longitude}" target="_blank" class="map-link">📍 View on Google Maps</a>`;
-                            })
-                            .catch(() => {
-                                document.getElementById('locationText').innerHTML = 
-                                    `Latitude: ${locationData.latitude.toFixed(6)}<br>` +
-                                    `Longitude: ${locationData.longitude.toFixed(6)}<br>` +
-                                    `Accuracy: ${locationData.accuracy.toFixed(0)} meters<br>` +
-                                    `<a href="https://www.google.com/maps?q=${locationData.latitude},${locationData.longitude}" target="_blank" class="map-link">📍 View on Google Maps</a>`;
-                            });
+                        document.getElementById('locationText').innerHTML = 'Getting location name...';
+                        
+                        getLocationName(lat, lon).then(locationName => {
+                            locationData.locationName = locationName;
+                            document.getElementById('locationText').innerHTML = 
+                                `<strong>📍 ${locationName}</strong><br>` +
+                                `<small>Accuracy: ${locationData.accuracy.toFixed(0)} meters</small>`;
+                        });
                     },
                     (error) => {
                         document.getElementById('locationText').textContent = 'Location access denied or unavailable';
@@ -579,8 +595,8 @@
             html += '<th>Photo</th><th>Name</th><th>ID</th><th>Department</th><th>Date</th><th>Time</th><th>Location</th><th>Action</th>';
             html += '</tr></thead><tbody>';
             records.reverse().forEach(record => {
-                const mapLink = record.location ? 
-                    `<a href="https://www.google.com/maps?q=${record.location.latitude},${record.location.longitude}" target="_blank" class="map-link">View Map</a>` : 
+                const locationDisplay = record.location && record.location.locationName ? 
+                    `<span class="location-badge">${record.location.locationName}</span>` : 
                     'N/A';
                 html += `<tr>
                     <td><img src="${record.photo}" class="photo-thumb" onclick="viewDetails(${record.id})"></td>
@@ -589,7 +605,7 @@
                     <td>${record.department}</td>
                     <td>${record.date}</td>
                     <td>${record.time}</td>
-                    <td>${mapLink}</td>
+                    <td>${locationDisplay}</td>
                     <td><button class="btn btn-primary" onclick="viewDetails(${record.id})">View</button></td>
                 </tr>`;
             });
@@ -611,13 +627,9 @@
                 <p><strong>Time:</strong> ${record.time}</p>`;
 
             if (record.location) {
-                html += `<p><strong>Location Details:</strong></p>`;
-                if (record.location.address) {
-                    html += `<p><strong>Address:</strong> ${record.location.address}</p>`;
-                }
-                html += `<p><strong>Coordinates:</strong> ${record.location.latitude.toFixed(6)}, ${record.location.longitude.toFixed(6)}</p>
-                    <p><strong>Accuracy:</strong> ${record.location.accuracy.toFixed(0)} meters</p>
-                    <p><a href="https://www.google.com/maps?q=${record.location.latitude},${record.location.longitude}" target="_blank" class="map-link">📍 Open in Google Maps</a></p>`;
+                html += `<p><strong>Location:</strong> ${record.location.locationName || 'N/A'}</p>`;
+                html += `<p><strong>Coordinates:</strong> ${record.location.latitude.toFixed(6)}, ${record.location.longitude.toFixed(6)}</p>`;
+                html += `<p><strong>Accuracy:</strong> ${record.location.accuracy.toFixed(0)} meters</p>`;
             }
 
             document.getElementById('modalBody').innerHTML = html;
@@ -643,13 +655,12 @@
                 return; 
             }
 
-            let csv = 'Name,ID,Email,Department,Date,Time,Latitude,Longitude,Address,Google Maps Link\n';
+            let csv = 'Name,ID,Email,Department,Date,Time,Location,Latitude,Longitude\n';
             records.forEach(r => {
+                const locationName = r.location && r.location.locationName ? r.location.locationName.replace(/"/g, '""') : 'N/A';
                 const lat = r.location ? r.location.latitude : 'N/A';
                 const lon = r.location ? r.location.longitude : 'N/A';
-                const address = r.location && r.location.address ? r.location.address.replace(/"/g, '""') : 'N/A';
-                const mapLink = r.location ? `https://www.google.com/maps?q=${lat},${lon}` : 'N/A';
-                csv += `"${r.teacherName}","${r.teacherId}","${r.email}","${r.department}","${r.date}","${r.time}","${lat}","${lon}","${address}","${mapLink}"\n`;
+                csv += `"${r.teacherName}","${r.teacherId}","${r.email}","${r.department}","${r.date}","${r.time}","${locationName}","${lat}","${lon}"\n`;
             });
 
             const blob = new Blob([csv], { type: 'text/csv' });
